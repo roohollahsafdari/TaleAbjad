@@ -1,14 +1,22 @@
-name: Build APK
+name: Build Release APK
 on:
   push:
   workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Unzip project
-        run: unzip -q TaleAbjad-android.zip
+        run: |
+          ZIP=$(find . -maxdepth 2 -name "*.zip" | head -1)
+          echo "Found: $ZIP"
+          unzip -q "$ZIP"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -16,10 +24,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.7
-      - name: Build
+      - name: Prepare keystore
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "Keystore ready"
+          else
+            echo "No keystore secret: APK will be unsigned"
+          fi
+      - name: Build release
         working-directory: TaleAbjad
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleRelease bundleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: TaleAbjad-debug-apk
-          path: TaleAbjad/app/build/outputs/apk/debug/*.apk
+          name: TaleAbjad-release
+          path: |
+            TaleAbjad/app/build/outputs/apk/release/*.apk
+            TaleAbjad/app/build/outputs/bundle/release/*.aab
